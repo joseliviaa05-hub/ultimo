@@ -1,0 +1,1554 @@
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const express = require('express');
+const fs = require('fs');
+
+// Servidor Express
+const app = express();
+app.get('/', (req, res) => res.send('🤖 Bot activo!'));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/stats', (req, res) => {
+    const clientes = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+    res.json(clientes.estadisticas);
+});
+
+// ═══════════════════════════════════════
+// 📊 API PARA EL DASHBOARD
+// ═══════════════════════════════════════
+
+// Habilitar CORS para el dashboard
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
+
+// Obtener todos los pedidos
+app.get('/api/pedidos', (req, res) => {
+    try {
+        const pedidos = JSON.parse(fs.readFileSync('./data/pedidos.json', 'utf8'));
+        res.json(pedidos.pedidos);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar pedidos' });
+    }
+});
+
+// Obtener un pedido específico
+app.get('/api/pedidos/:id', (req, res) => {
+    try {
+        const pedidos = JSON.parse(fs.readFileSync('./data/pedidos.json', 'utf8'));
+        const pedido = pedidos.pedidos.find(p => p.id === req.params.id);
+        
+        if (pedido) {
+            res.json(pedido);
+        } else {
+            res.status(404).json({ error: 'Pedido no encontrado' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar pedido' });
+    }
+});
+
+// Obtener todos los clientes
+app.get('/api/clientes', (req, res) => {
+    try {
+        const clientes = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+        res.json(clientes.clientes);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar clientes' });
+    }
+});
+
+// Obtener un cliente específico
+app.get('/api/clientes/:telefono', (req, res) => {
+    try {
+        const clientes = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+        const cliente = clientes.clientes.find(c => c.telefono === req.params.telefono);
+        
+        if (cliente) {
+            res.json(cliente);
+        } else {
+            res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar cliente' });
+    }
+});
+
+// Obtener productos
+app.get('/api/productos', (req, res) => {
+    try {
+        const productos = JSON.parse(fs.readFileSync('./data/lista-precios.json', 'utf8'));
+        res.json(productos);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar productos' });
+    }
+});
+
+// Obtener estadísticas completas
+app.get('/api/estadisticas', (req, res) => {
+    try {
+        const clientes = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+        const pedidos = JSON.parse(fs.readFileSync('./data/pedidos.json', 'utf8'));
+        
+        // Calcular pedidos por día (últimos 7 días)
+        const hoy = new Date();
+        const pedidosPorDia = [];
+        
+        for (let i = 6; i >= 0; i--) {
+            const fecha = new Date(hoy);
+            fecha.setDate(fecha.getDate() - i);
+            const fechaStr = fecha.toISOString().split('T')[0];
+            
+            const pedidosDia = pedidos.pedidos.filter(p => {
+                const pedidoFecha = new Date(p.fecha).toISOString().split('T')[0];
+                return pedidoFecha === fechaStr;
+            });
+            
+            const totalDia = pedidosDia.reduce((sum, p) => sum + p.total, 0);
+            
+            pedidosPorDia.push({
+                fecha: fechaStr,
+                pedidos: pedidosDia.length,
+                ventas: totalDia
+            });
+        }
+        
+        res.json({
+            ...clientes.estadisticas,
+            pedidos_por_dia: pedidosPorDia,
+            ultimo_pedido: pedidos.pedidos[pedidos.pedidos.length - 1] || null
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cargar estadísticas' });
+    }
+});
+
+// Estado del bot
+app.get('/api/estado', (req, res) => {
+    res.json({
+        activo: client.info ? true : false,
+        conectado: client.info ? true : false,
+        numero: client.info ? client.info.wid.user : null,
+        notificaciones: negocioData.notificaciones_activas,
+        respuestas_automaticas: negocioData.respuestas_automaticas_activas
+    });
+});
+
+// Cambiar estado de respuestas automáticas
+app.post('/api/toggle-respuestas', express.json(), (req, res) => {
+    try {
+        negocioData.respuestas_automaticas_activas = !negocioData.respuestas_automaticas_activas;
+        fs.writeFileSync('./data/negocio.json', JSON.stringify(negocioData, null, 2));
+        
+        console.log(`🔄 Respuestas automáticas ${negocioData.respuestas_automaticas_activas ? 'ACTIVADAS' : 'PAUSADAS'} desde el dashboard`);
+        
+        res.json({
+            success: true,
+            estado: negocioData.respuestas_automaticas_activas
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cambiar estado' });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Servidor en puerto ${PORT}`));
+
+// Cargar datos
+const negocioData = JSON.parse(fs.readFileSync('./data/negocio.json', 'utf8'));
+const listaPrecios = JSON.parse(fs.readFileSync('./data/lista-precios.json', 'utf8'));
+const contactosIgnorar = JSON.parse(fs.readFileSync('./data/contactos-ignorar.json', 'utf8'));
+const palabrasClave = JSON.parse(fs.readFileSync('./data/palabras-clave.json', 'utf8'));
+const configPedidos = JSON.parse(fs.readFileSync('./data/config-pedidos.json', 'utf8'));
+
+// ═══════════════════════════════════════
+// 🧠 SISTEMA DE MEMORIA DE CONVERSACIONES
+// ═══════════════════════════════════════
+
+// Almacenar sesiones activas (clientes en medio de una conversación)
+const sesionesActivas = new Map();
+
+// Tiempo de expiración de sesión (10 minutos)
+const TIEMPO_EXPIRACION_SESION = 10 * 60 * 1000; // 10 minutos en milisegundos
+
+// Función para marcar que un cliente tiene una conversación activa
+function marcarSesionActiva(from, tipo = 'conversacion') {
+    sesionesActivas.set(from, {
+        tipo: tipo,
+        timestamp: Date.now()
+    });
+    
+    // Auto-limpiar después del tiempo de expiración
+    setTimeout(() => {
+        if (sesionesActivas.has(from)) {
+            const sesion = sesionesActivas.get(from);
+            if (Date.now() - sesion.timestamp >= TIEMPO_EXPIRACION_SESION) {
+                sesionesActivas.delete(from);
+                console.log(`🕐 Sesión expirada para: ${from}`);
+            }
+        }
+    }, TIEMPO_EXPIRACION_SESION);
+}
+
+// Función para verificar si un cliente tiene sesión activa
+function tieneSesionActiva(from) {
+    if (!sesionesActivas.has(from)) return false;
+    
+    const sesion = sesionesActivas.get(from);
+    const tiempoTranscurrido = Date.now() - sesion.timestamp;
+    
+    // Si pasaron más de 10 minutos, eliminar sesión
+    if (tiempoTranscurrido >= TIEMPO_EXPIRACION_SESION) {
+        sesionesActivas.delete(from);
+        return false;
+    }
+    
+    return true;
+}
+
+// Función para limpiar sesión
+function limpiarSesion(from) {
+    sesionesActivas.delete(from);
+}
+
+// Carritos temporales en memoria
+const carritos = {};
+const timersCarrito = {};
+
+// Cliente de WhatsApp
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+});
+
+console.log('\n🚀🚀🚀 INICIANDO BOT DE WHATSAPP 🚀🚀🚀\n');
+
+client.on('qr', (qr) => {
+    console.log('\n==============================================');
+    console.log('📱 ¡ESCANEA ESTE CÓDIGO QR!');
+    console.log('==============================================\n');
+    qrcode.generate(qr, { small: true });
+    console.log('\n==============================================');
+    console.log('👆 Abre WhatsApp en tu celular');
+    console.log('👉 Menú → Dispositivos vinculados');
+    console.log('👉 Vincular un dispositivo');
+    console.log('👉 Escanea el QR de arriba');
+    console.log('==============================================\n');
+});
+
+client.on('ready', () => {
+    console.log('\n🎉🎉🎉 ¡BOT CONECTADO EXITOSAMENTE! 🎉🎉🎉\n');
+    console.log('🤖 Sistema de filtrado inteligente ACTIVADO');
+    console.log('🧠 Sistema de memoria de conversaciones ACTIVADO');
+    console.log('🛒 Sistema de pedidos ACTIVADO');
+    console.log('👥 Sistema de gestión de clientes ACTIVADO');
+    console.log(`📵 Contactos ignorados: ${contactosIgnorar.contactos_ignorar.length}`);
+    
+    const clientesData = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+    console.log(`👥 Clientes registrados: ${clientesData.estadisticas.total_clientes}`);
+    console.log(`📦 Total pedidos: ${clientesData.estadisticas.total_pedidos}`);
+    console.log(`💰 Total vendido: $${clientesData.estadisticas.total_vendido}\n`);
+});
+
+client.on('message', async (msg) => {
+    const from = msg.from;
+    const texto = msg.body;
+    const textoLower = texto.toLowerCase();
+    const contacto = await msg.getContact();
+    const nombreContacto = contacto.pushname || contacto.name || contacto.number || from;
+    
+    console.log(`\n📨 Mensaje recibido de: ${nombreContacto} (${from})`);
+    console.log(`💬 Contenido: "${texto}"`);
+    
+    // ═══════════════════════════════════════
+    // 🚫 FILTRO: SOLO CHATS INDIVIDUALES
+    // ═══════════════════════════════════════
+    
+    // Ignorar mensajes de grupos
+    if (from.endsWith('@g.us')) {
+        console.log(`🚫 IGNORADO: Mensaje de grupo`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // Ignorar estados (status)
+    if (from === 'status@broadcast') {
+        console.log(`🚫 IGNORADO: Estado de WhatsApp`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // Ignorar listas de difusión
+    if (from.endsWith('@broadcast')) {
+        console.log(`🚫 IGNORADO: Lista de difusión`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // Solo procesar chats individuales (números que terminan en @c.us)
+    if (!from.endsWith('@c.us')) {
+        console.log(`🚫 IGNORADO: No es un chat individual`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    console.log(`✅ CHAT INDIVIDUAL: Procesando mensaje`);
+    
+    // Registrar o actualizar cliente
+    registrarOActualizarCliente(from, nombreContacto);
+    
+    // Comandos del dueño para controlar el bot (siempre funcionan)
+    if (from === negocioData.numero_dueño) {
+        
+        // Pausar respuestas automáticas
+        if (textoLower.match(/pausar bot|pausar respuestas|apagar bot|desactivar bot/)) {
+            negocioData.respuestas_automaticas_activas = false;
+            fs.writeFileSync('./data/negocio.json', JSON.stringify(negocioData, null, 2));
+            await msg.reply(`⏸️ *RESPUESTAS AUTOMÁTICAS PAUSADAS*\n\n` +
+                           `El bot NO responderá a los clientes.\n` +
+                           `Tú puedes seguir controlándolo.\n\n` +
+                           `Para reanudar: "reanudar bot"`);
+            console.log(`⏸️ Respuestas automáticas PAUSADAS por el dueño`);
+            return;
+        }
+        
+        // Reanudar respuestas automáticas
+        if (textoLower.match(/reanudar bot|reanudar respuestas|activar bot|encender bot/)) {
+            negocioData.respuestas_automaticas_activas = true;
+            fs.writeFileSync('./data/negocio.json', JSON.stringify(negocioData, null, 2));
+            await msg.reply(`▶️ *RESPUESTAS AUTOMÁTICAS REACTIVADAS*\n\n` +
+                           `El bot volverá a responder a los clientes automáticamente.\n\n` +
+                           `Para pausar: "pausar bot"`);
+            console.log(`▶️ Respuestas automáticas REACTIVADAS por el dueño`);
+            return;
+        }
+        
+        // Ver estado del bot
+        if (textoLower.match(/estado del bot|estado bot|bot estado/)) {
+            const estadoRespuestas = negocioData.respuestas_automaticas_activas ? '▶️ ACTIVAS' : '⏸️ PAUSADAS';
+            const estadoNotificaciones = negocioData.notificaciones_activas ? '✅ ACTIVADAS' : '🔕 DESACTIVADAS';
+            
+            await msg.reply(`🤖 *ESTADO DEL BOT*\n\n` +
+                           `━━━━━━━━━━━━━━━━━━━━━\n` +
+                           `🔄 Respuestas automáticas: ${estadoRespuestas}\n` +
+                           `🔔 Notificaciones: ${estadoNotificaciones}\n` +
+                           `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                           `*Comandos disponibles:*\n` +
+                           `• "pausar bot" - Pausar respuestas\n` +
+                           `• "reanudar bot" - Reanudar respuestas\n` +
+                           `• "activar notificaciones"\n` +
+                           `• "desactivar notificaciones"\n` +
+                           `• "estadisticas"`);
+            return;
+        }
+    }
+    
+    // Si las respuestas automáticas están pausadas, NO procesar
+    if (!negocioData.respuestas_automaticas_activas) {
+        console.log(`⏸️ IGNORADO: Respuestas automáticas pausadas`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // 🚫 FILTRO 1: Lista negra
+    if (contactosIgnorar.contactos_ignorar.includes(from)) {
+        console.log(`🚫 IGNORADO: Contacto en lista negra`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // 🧠 VERIFICAR SI TIENE SESIÓN ACTIVA (conversación en curso)
+    const tieneSesion = tieneSesionActiva(from);
+    
+    // 🔍 FILTRO 2: Detectar si es mensaje de negocio
+    const esMensajeNegocio = verificarMensajeNegocio(textoLower);
+    
+    // Si NO es mensaje de negocio Y NO tiene sesión activa, ignorar
+    if (!esMensajeNegocio && !tieneSesion) {
+        console.log(`🤷 IGNORADO: No contiene palabras de negocio/productos`);
+        console.log(`💡 TIP: Mensaje parece personal o sin contexto comercial`);
+        console.log(`───────────────────────────────────────────\n`);
+        return;
+    }
+    
+    // Si tiene sesión activa, procesar aunque no tenga palabras clave
+    if (tieneSesion) {
+        console.log(`🧠 PROCESANDO: Cliente con conversación activa`);
+    } else {
+        console.log(`✅ PROCESANDO: Mensaje relacionado con negocio/productos`);
+    }
+    
+    // Renovar sesión activa
+    marcarSesionActiva(from);
+    
+    try {
+        const respuesta = await procesarMensaje(textoLower, texto, from, nombreContacto);
+        await msg.reply(respuesta);
+        console.log(`📤 Respuesta enviada correctamente`);
+    } catch (error) {
+        console.error(`❌ Error al enviar respuesta:`, error);
+    }
+    
+    console.log(`───────────────────────────────────────────\n`);
+});
+
+// 👥 Registrar o actualizar cliente
+function registrarOActualizarCliente(telefono, nombre) {
+    const clientesData = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+    
+    let cliente = clientesData.clientes.find(c => c.telefono === telefono);
+    
+    if (!cliente) {
+        // Nuevo cliente
+        cliente = {
+            telefono: telefono,
+            nombre: nombre,
+            fecha_registro: new Date().toISOString(),
+            ultima_interaccion: new Date().toISOString(),
+            total_pedidos: 0,
+            total_gastado: 0,
+            pedidos: []
+        };
+        clientesData.clientes.push(cliente);
+        clientesData.estadisticas.total_clientes += 1;
+        
+        console.log(`👤 Nuevo cliente registrado: ${nombre} (${telefono})`);
+    } else {
+        // Actualizar última interacción
+        cliente.ultima_interaccion = new Date().toISOString();
+        
+        // Actualizar nombre si cambió
+        if (cliente.nombre !== nombre) {
+            console.log(`👤 Nombre actualizado: ${cliente.nombre} → ${nombre}`);
+            cliente.nombre = nombre;
+        }
+    }
+    
+    fs.writeFileSync('./data/clientes.json', JSON.stringify(clientesData, null, 2));
+}
+
+// 📊 Obtener información del cliente
+function obtenerInfoCliente(telefono) {
+    const clientesData = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+    return clientesData.clientes.find(c => c.telefono === telefono);
+}
+
+// 🔍 Función para verificar si el mensaje es sobre negocio
+function verificarMensajeNegocio(texto) {
+    const textoLimpio = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    const tienePalabraNegocio = palabrasClave.palabras_negocio.some(palabra => {
+        const palabraLimpia = palabra.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return textoLimpio.includes(palabraLimpia);
+    });
+    
+    const tienePalabraProducto = palabrasClave.palabras_productos.some(palabra => {
+        const palabraLimpia = palabra.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return textoLimpio.includes(palabraLimpia);
+    });
+    
+    const tieneSaludoContextual = palabrasClave.saludos_contextuales.some(saludo => {
+        const saludoLimpio = saludo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return textoLimpio.includes(saludoLimpio);
+    });
+    
+    return tienePalabraNegocio || tienePalabraProducto || tieneSaludoContextual;
+}
+
+// 🛒 Procesar mensajes
+async function procesarMensaje(textoLower, textoOriginal, from, nombreContacto) {
+    
+    // ═══════════════════════════════════════
+    // 📊 HISTORIAL Y ESTADÍSTICAS DEL CLIENTE
+    // ═══════════════════════════════════════
+    
+    // Ver mis pedidos / historial
+    if (textoLower.match(/mis pedidos|mi historial|historial|pedidos anteriores|ultimos pedidos/)) {
+        return mostrarHistorialCliente(from);
+    }
+    
+    // ═══════════════════════════════════════
+    // 🔔 CONTROL DE NOTIFICACIONES (Solo dueño)
+    // ═══════════════════════════════════════
+
+    // Verificar si el mensaje es del dueño
+    if (from === negocioData.numero_dueño) {
+    
+        // Activar notificaciones
+        if (textoLower.match(/activar notificaciones|notificaciones on|encender notificaciones/)) {
+            negocioData.notificaciones_activas = true;
+            fs.writeFileSync('./data/negocio.json', JSON.stringify(negocioData, null, 2));
+            return `✅ *Notificaciones ACTIVADAS*\n\n` +
+                   `Recibirás un mensaje automático cada vez que un cliente confirme un pedido.\n\n` +
+                   `Para desactivar: "desactivar notificaciones"`;
+        }
+    
+        // Desactivar notificaciones
+        if (textoLower.match(/desactivar notificaciones|notificaciones off|apagar notificaciones/)) {
+            negocioData.notificaciones_activas = false;
+            fs.writeFileSync('./data/negocio.json', JSON.stringify(negocioData, null, 2));
+            return `🔕 *Notificaciones DESACTIVADAS*\n\n` +
+                   `Ya no recibirás mensajes automáticos de nuevos pedidos.\n\n` +
+                   `Para activar: "activar notificaciones"`;
+        }
+    
+        // Ver estado de notificaciones
+        if (textoLower.match(/estado notificaciones|ver notificaciones|notificaciones estado/)) {
+            const estado = negocioData.notificaciones_activas ? '✅ ACTIVADAS' : '🔕 DESACTIVADAS';
+            const emoji = negocioData.notificaciones_activas ? '🔔' : '🔕';
+        
+            let respuesta = `${emoji} *Estado de Notificaciones*\n\n`;
+            respuesta += `Estado actual: ${estado}\n\n`;
+        
+            if (negocioData.notificaciones_activas) {
+                respuesta += `Recibirás notificaciones de:\n`;
+                respuesta += `• Nuevos pedidos confirmados\n`;
+                respuesta += `• Detalles del cliente\n`;
+                respuesta += `• Productos solicitados\n`;
+                respuesta += `• Total del pedido\n\n`;
+                respuesta += `Para desactivar: "desactivar notificaciones"`;
+            } else {
+                respuesta += `No recibirás notificaciones automáticas.\n\n`;
+                respuesta += `Para activar: "activar notificaciones"`;
+            }
+        
+            return respuesta;
+        }
+    
+        // Estadísticas rápidas (bonus)
+        if (textoLower.match(/estadisticas|stats|resumen/)) {
+            const clientesData = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+            const pedidosData = JSON.parse(fs.readFileSync('./data/pedidos.json', 'utf8'));
+        
+            let respuesta = `📊 *ESTADÍSTICAS DEL NEGOCIO*\n\n`;
+            respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+            respuesta += `👥 Total clientes: ${clientesData.estadisticas.total_clientes}\n`;
+            respuesta += `📦 Total pedidos: ${clientesData.estadisticas.total_pedidos}\n`;
+            respuesta += `💰 Total vendido: $${clientesData.estadisticas.total_vendido}\n`;
+            respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        
+            // Último pedido
+            if (pedidosData.pedidos.length > 0) {
+                const ultimoPedido = pedidosData.pedidos[pedidosData.pedidos.length - 1];
+                respuesta += `📄 *Último pedido:*\n`;
+                respuesta += `• ${ultimoPedido.id} - ${ultimoPedido.nombre}\n`;
+                respuesta += `• $${ultimoPedido.total} - ${formatearFecha(ultimoPedido.fecha)}\n\n`;
+            }
+        
+            respuesta += `💡 Comandos disponibles:\n`;
+            respuesta += `• "activar notificaciones"\n`;
+            respuesta += `• "desactivar notificaciones"\n`;
+            respuesta += `• "estado notificaciones"`;
+        
+            return respuesta;
+        }
+    }
+
+    
+    // ═══════════════════════════════════════
+    // 🛒 SISTEMA DE PEDIDOS
+    // ═══════════════════════════════════════
+    
+    // Ver carrito
+    if (textoLower.match(/ver carrito|mi carrito|carrito|mi pedido/)) {
+        marcarSesionActiva(from, 'consulta_carrito');
+        return mostrarCarrito(from);
+    }
+    
+    // Confirmar pedido
+    if (textoLower.match(/^(confirmar|confirmo|si confirmo|ok confirmo)$/)) {
+        return confirmarPedido(from, nombreContacto);
+    }
+    
+    // Cancelar/vaciar carrito
+    if (textoLower.match(/cancelar|vaciar|borrar carrito|limpiar carrito/)) {
+        limpiarSesion(from);
+        return cancelarCarrito(from);
+    }
+    
+    // Quitar producto del carrito
+    if (textoLower.match(/quitar|eliminar|sacar/)) {
+        const numero = extraerNumero(textoOriginal);
+        if (numero) {
+            marcarSesionActiva(from, 'modificando_carrito');
+            return quitarProductoCarrito(from, numero - 1);
+        }
+    }
+    
+    // Manejar "si" para agregar al carrito
+    if (textoLower.match(/^(si|sí|ok|dale|confirmo si)$/)) {
+        if (carritos[from] && carritos[from].temporal && carritos[from].temporal.length > 0) {
+            marcarSesionActiva(from, 'pedido');
+            return agregarAlCarrito(from);
+        }
+    }
+    
+    // Manejar "no"
+    if (textoLower.match(/^(no|nope|cancel)$/)) {
+        if (carritos[from] && carritos[from].temporal && carritos[from].temporal.length > 0) {
+            carritos[from].temporal = [];
+            limpiarSesion(from);
+            return `❌ Pedido cancelado.\n\nPuedes hacer otro pedido cuando quieras.`;
+        }
+    }
+    
+    // Manejar opciones de entrega (1 o 2)
+    if (textoLower.match(/^[12]$/)) {
+        const respuestaEntrega = procesarOpcionEntrega(from, textoLower, nombreContacto);
+        if (respuestaEntrega) {
+            limpiarSesion(from); // Limpiar sesión después de confirmar pedido
+            return respuestaEntrega;
+        }
+    }
+    
+    // Detectar intento de pedido con texto libre
+    const productosDetectados = detectarProductosEnTexto(textoOriginal);
+    
+    if (productosDetectados.length > 0) {
+        marcarSesionActiva(from, 'seleccionando_productos');
+        return procesarDeteccionProductos(from, productosDetectados);
+    }
+    
+    // ═══════════════════════════════════════
+    // 📋 CONSULTAS NORMALES
+    // ═══════════════════════════════════════
+    
+    // Saludos
+    if (textoLower.match(/hola|buenas|buenos dias|buenas tardes|buenas noches|hey|hi/)) {
+        const infoCliente = obtenerInfoCliente(from);
+        let saludo = `¡Hola`;
+        
+        if (infoCliente && infoCliente.total_pedidos > 0) {
+            saludo += ` de nuevo`;
+        }
+        
+        saludo += `! 👋 Bienvenido a *${negocioData.nombre}*\n\n`;
+        
+        if (infoCliente && infoCliente.total_pedidos > 0) {
+            saludo += `📊 Has realizado ${infoCliente.total_pedidos} pedido(s) con nosotros 🎉\n\n`;
+        }
+        
+        saludo += `Te puedo ayudar con:\n` +
+               `📋 Lista de precios\n` +
+               `🕐 Horarios\n` +
+               `📍 Ubicación\n` +
+               `📦 Stock de productos\n` +
+               `🛒 Hacer un pedido\n` +
+               `💳 Medios de pago\n`;
+        
+        if (infoCliente && infoCliente.total_pedidos > 0) {
+            saludo += `📜 Ver mis pedidos anteriores\n`;
+        }
+        
+        saludo += `\n¿Qué necesitas?`;
+        
+        marcarSesionActiva(from, 'consulta');
+        return saludo;
+    }
+
+    // Horarios
+    if (textoLower.match(/horario|hora|atencion|abren|cierran|abierto/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `🕐 *Horarios de Atención*\n\n${negocioData.horarios}`;
+    }
+
+    // Ubicación
+    if (textoLower.match(/ubicacion|direccion|donde|local|negocio|como llego/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `📍 *Nuestra Ubicación*\n\n${negocioData.direccion}\n\nTe esperamos! 😊`;
+    }
+
+    // Precios - Librería
+    if (textoLower.match(/cuaderno|lapiz|lapicera|marcador|libreria|escolar|boligrafo/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('libreria');
+    }
+
+    // Precios - Cotillón
+    if (textoLower.match(/cotillon|globo|vela|cumpleaños|cumpleanos|fiesta|piñata|pinata|decoracion/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('cotillon');
+    }
+
+    // Precios - Juguetería
+    if (textoLower.match(/juguete|rompecabeza|bloque|didactico|juego/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('jugueteria');
+    }
+
+    // Impresiones
+    if (textoLower.match(/fotocopia|impresi|imprim|sublim|remera|taza|edicion|diseño|diseno/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('impresiones') + 
+               `\n\n💡 *Servicios disponibles:*\n` +
+               `- Fotocopias B/N y Color\n` +
+               `- Sublimación en remeras\n` +
+               `- Tazas personalizadas\n` +
+               `- Mousepads custom\n` +
+               `- Diseño e impresión de invitaciones\n\n` +
+               `Para hacer un pedido, escribe por ejemplo:\n` +
+               `"Quiero 2 remeras" o "Necesito 5 tazas"`;
+    }
+
+    // Bijou
+    if (textoLower.match(/bijou|aro|collar|pulsera|accesorio|joya|anillo/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('bijou');
+    }
+
+    // Accesorios celular
+    if (textoLower.match(/celular|funda|vidrio|cargador|auricula|telefono|movil|cable/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('accesorios_celular');
+    }
+
+    // Accesorios computadora
+    if (textoLower.match(/computadora|mouse|teclado|pendrive|webcam|pc|compu|usb/)) {
+        marcarSesionActiva(from, 'consulta_productos');
+        return buscarPreciosCategoria('accesorios_computadora');
+    }
+
+    // Stock
+    if (textoLower.match(/stock|hay|tienen|disponible|queda|quedan/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `📦 Para consultar stock específico, escribe el nombre del producto.\n\n` +
+               `Ejemplo: "Hay cuadernos A4?"`;
+    }
+
+    // Lista completa
+    if (textoLower.match(/lista|precio|catalogo|que tienen|que venden|productos|menu/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `📋 *Categorías Disponibles:*\n\n` +
+               `📚 Librería\n` +
+               `🎉 Cotillón\n` +
+               `🧸 Juguetería\n` +
+               `📄 Fotocopiadora\n` +
+               `🖨️ Impresiones personalizadas\n` +
+               `💍 Bijou\n` +
+               `📱 Accesorios celular\n` +
+               `💻 Accesorios computadora\n\n` +
+               `Para hacer un pedido, escribe por ejemplo:\n` +
+               `"Quiero 2 cuadernos y 5 lapiceras"`;
+    }
+
+    // Pago
+    if (textoLower.match(/pago|efectivo|tarjeta|transfer|mercadopago|debito|credito/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `💳 *Medios de Pago:*\n\n${negocioData.medios_pago}`;
+    }
+
+    // Contacto
+    if (textoLower.match(/contacto|telefono|whatsapp|llamar/)) {
+        marcarSesionActiva(from, 'consulta');
+        return `📞 *Contacto*\n\n` +
+               `WhatsApp: ${negocioData.whatsapp}\n` +
+               `Teléfono: ${negocioData.telefono}\n\n` +
+               `¡Estamos para ayudarte! 😊`;
+    }
+
+    // Respuesta por defecto
+    return `No entendí bien tu consulta 🤔\n\n` +
+           `Puedes preguntarme sobre:\n` +
+           `• Precios y productos\n` +
+           `• Hacer un pedido (ej: "Quiero 2 cuadernos")\n` +
+           `• Ver mis pedidos anteriores\n` +
+           `• Horarios de atención\n` +
+           `• Ubicación del local\n` +
+           `• Stock disponible\n` +
+           `• Medios de pago\n\n` +
+           `¿En qué te puedo ayudar?`;
+}
+
+// 📜 Mostrar historial del cliente
+function mostrarHistorialCliente(telefono) {
+    const infoCliente = obtenerInfoCliente(telefono);
+    
+    if (!infoCliente || infoCliente.total_pedidos === 0) {
+        return `📜 *Tu Historial*\n\n` +
+               `Aún no has realizado pedidos con nosotros.\n\n` +
+               `¿Te gustaría hacer tu primer pedido? 🛒\n` +
+               `Escribe por ejemplo: "Quiero 2 cuadernos"`;
+    }
+    
+    let respuesta = `📜 *TU HISTORIAL DE PEDIDOS*\n`;
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    respuesta += `👤 Cliente: ${infoCliente.nombre}\n`;
+    respuesta += `📱 Teléfono: ${infoCliente.telefono.replace('@c.us', '')}\n`;
+    respuesta += `📅 Cliente desde: ${formatearFecha(infoCliente.fecha_registro)}\n`;
+    respuesta += `📦 Total de pedidos: ${infoCliente.total_pedidos}\n`;
+    respuesta += `💰 Total gastado: $${infoCliente.total_gastado}\n\n`;
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    if (infoCliente.pedidos.length > 0) {
+        respuesta += `📋 *ÚLTIMOS PEDIDOS:*\n\n`;
+        
+        // Mostrar últimos 5 pedidos
+        const ultimosPedidos = infoCliente.pedidos.slice(-5).reverse();
+        
+        ultimosPedidos.forEach((pedido, index) => {
+            respuesta += `${index + 1}. *${pedido.id}* - ${formatearFecha(pedido.fecha)}\n`;
+            respuesta += `   💰 Total: $${pedido.total}\n`;
+            respuesta += `   📦 Productos:\n`;
+            
+            pedido.productos.slice(0, 3).forEach(prod => {
+                respuesta += `      • ${prod.nombre} x${prod.cantidad}\n`;
+            });
+            
+            if (pedido.productos.length > 3) {
+                respuesta += `      • ... y ${pedido.productos.length - 3} más\n`;
+            }
+            
+            respuesta += `   🚚 Entrega: ${pedido.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro'}\n`;
+            respuesta += `   ✅ Estado: ${pedido.estado}\n\n`;
+        });
+        
+        if (infoCliente.pedidos.length > 5) {
+            respuesta += `... y ${infoCliente.pedidos.length - 5} pedidos más\n\n`;
+        }
+    }
+    
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `🙏 ¡Gracias por tu preferencia!\n\n`;
+    respuesta += `¿Deseas hacer un nuevo pedido? 🛒`;
+    
+    return respuesta;
+}
+
+// 📅 Formatear fecha
+function formatearFecha(isoString) {
+    const fecha = new Date(isoString);
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const año = fecha.getFullYear();
+    const hora = String(fecha.getHours()).padStart(2, '0');
+    const minutos = String(fecha.getMinutes()).padStart(2, '0');
+    
+    return `${dia}/${mes}/${año} ${hora}:${minutos}`;
+}
+
+// 🔍 Detectar productos en el texto
+function detectarProductosEnTexto(texto) {
+    const productosDetectados = [];
+    const textoLower = texto.toLowerCase();
+    
+    // Convertir palabras numéricas a números
+    const numerosTexto = {
+        'un': 1, 'una': 1, 'uno': 1,
+        'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+        'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10
+    };
+    
+    // Buscar en todas las categorías
+    for (const [categoria, subcategorias] of Object.entries(listaPrecios)) {
+        for (const [subcategoria, productos] of Object.entries(subcategorias)) {
+            for (const [nombreProducto, infoProducto] of Object.entries(productos)) {
+                
+                // Normalizar nombre del producto
+                const nombreNormalizado = nombreProducto.replace(/_/g, ' ').toLowerCase();
+                const palabrasProducto = nombreNormalizado.split(' ');
+                
+                // Buscar si el texto menciona este producto
+                const mencionaProducto = palabrasProducto.some(palabra => 
+                    textoLower.includes(palabra) && palabra.length > 3
+                );
+                
+                if (mencionaProducto) {
+                    // Buscar cantidad cerca del nombre del producto
+                    let cantidad = 1; // Por defecto 1
+                    
+                    // Buscar números antes o después del producto
+                    const regexNumero = /(\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)/gi;
+                    const matches = texto.match(regexNumero);
+                    
+                    if (matches) {
+                        const ultimoMatch = matches[matches.length - 1].toLowerCase();
+                        cantidad = numerosTexto[ultimoMatch] || parseInt(ultimoMatch) || 1;
+                    }
+                    
+                    productosDetectados.push({
+                        nombre: nombreProducto,
+                        nombreFormateado: nombreProducto.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        cantidad: cantidad,
+                        precio: infoProducto.precio || infoProducto.precio_desde,
+                        stock: infoProducto.stock,
+                        categoria: categoria
+                    });
+                    
+                    break; // Solo el primer match por producto
+                }
+            }
+        }
+    }
+    
+    return productosDetectados;
+}
+
+// 🛒 Procesar productos detectados
+function procesarDeteccionProductos(from, productos) {
+    if (productos.length === 0) {
+        return `🤔 No encontré productos específicos en tu mensaje.\n\n` +
+               `Intenta escribir algo como:\n` +
+               `"Quiero 2 cuadernos A4"\n` +
+               `"Dame 5 lapiceras"\n` +
+               `"Necesito 3 globos"`;
+    }
+    
+    let respuesta = `🔍 *Encontré estos productos:*\n\n`;
+    
+    productos.forEach((prod, index) => {
+        const numero = index + 1;
+        const stockEmoji = prod.stock ? '✅' : '❌';
+        const precioTotal = prod.precio * prod.cantidad;
+        
+        respuesta += `${numero}️⃣ ${stockEmoji} ${prod.nombreFormateado}\n`;
+        respuesta += `   Cantidad: ${prod.cantidad}\n`;
+        respuesta += `   Precio unitario: $${prod.precio}\n`;
+        respuesta += `   Subtotal: $${precioTotal}\n\n`;
+    });
+    
+    // Verificar si alguno no tiene stock
+    const sinStock = productos.filter(p => !p.stock);
+    if (sinStock.length > 0) {
+        respuesta += `⚠️ ATENCIÓN: Algunos productos están SIN STOCK\n\n`;
+    }
+    
+    respuesta += `¿Es correcto este pedido?\n\n`;
+    respuesta += `• Escribe *"si"* para agregarlo al carrito\n`;
+    respuesta += `• Escribe *"no"* para cancelar\n`;
+    respuesta += `• Escribe *"cambiar [número]"* para modificar cantidad`;
+    
+    // Guardar productos detectados temporalmente
+    if (!carritos[from]) {
+        carritos[from] = { productos: [], temporal: [] };
+    }
+    carritos[from].temporal = productos;
+    
+    return respuesta;
+}
+
+// ✅ Agregar productos al carrito (cuando dice "si")
+function agregarAlCarrito(from) {
+    if (!carritos[from] || !carritos[from].temporal || carritos[from].temporal.length === 0) {
+        return `❌ No hay productos pendientes para agregar.\n\n` +
+               `Escribe tu pedido, ejemplo: "Quiero 2 cuadernos"`;
+    }
+    
+    const productosTemporales = carritos[from].temporal;
+    
+    // Verificar stock
+    const sinStock = productosTemporales.filter(p => !p.stock);
+    if (sinStock.length > 0) {
+        let respuesta = `❌ No puedo agregar estos productos porque están SIN STOCK:\n\n`;
+        sinStock.forEach(p => {
+            respuesta += `• ${p.nombreFormateado}\n`;
+        });
+        respuesta += `\n¿Deseas continuar solo con los productos disponibles? (si/no)`;
+        return respuesta;
+    }
+    
+    // Inicializar carrito si no existe
+    if (!carritos[from].productos) {
+        carritos[from].productos = [];
+    }
+    
+    // Agregar productos
+    productosTemporales.forEach(prod => {
+        carritos[from].productos.push(prod);
+    });
+    
+    // Limpiar temporal
+    carritos[from].temporal = [];
+    
+    // Iniciar timer de expiración (15 minutos)
+    iniciarTimerCarrito(from);
+    
+    return mostrarCarrito(from) + 
+           `\n\n💡 ¿Deseas agregar más productos?\n` +
+           `• Escribe otro pedido (ej: "3 lapiceras")\n` +
+           `• O escribe *"confirmar"* para finalizar`;
+}
+
+// 📊 Mostrar carrito
+function mostrarCarrito(from) {
+    if (!carritos[from] || !carritos[from].productos || carritos[from].productos.length === 0) {
+        return `🛒 Tu carrito está vacío\n\n` +
+               `Para hacer un pedido, escribe por ejemplo:\n` +
+               `"Quiero 2 cuadernos" o "Dame 5 lapiceras"`;
+    }
+    
+    let respuesta = `🛒 *TU CARRITO*\n`;
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    let total = 0;
+    
+    carritos[from].productos.forEach((prod, index) => {
+        const numero = index + 1;
+        const subtotal = prod.precio * prod.cantidad;
+        total += subtotal;
+        
+        respuesta += `${numero}. ${prod.nombreFormateado}\n`;
+        respuesta += `   ${prod.cantidad} x $${prod.precio} = $${subtotal}\n\n`;
+    });
+    
+    // Calcular descuento
+    let descuento = 0;
+    let mensajeDescuento = '';
+    
+    if (configPedidos.descuentos.habilitado) {
+        for (const regla of configPedidos.descuentos.reglas) {
+            if (total >= regla.minimo) {
+                descuento = Math.floor(total * (regla.porcentaje / 100));
+                mensajeDescuento = `🎉 ${regla.descripcion}\n`;
+            }
+        }
+    }
+    
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `💰 Subtotal: $${total}\n`;
+    
+    if (descuento > 0) {
+        respuesta += mensajeDescuento;
+        respuesta += `🎁 Descuento: -$${descuento}\n`;
+        respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        respuesta += `💰 *TOTAL: $${total - descuento}*\n`;
+    } else {
+        respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        respuesta += `💰 *TOTAL: $${total}*\n`;
+    }
+    
+    respuesta += `\n📝 Opciones:\n`;
+    respuesta += `• *"confirmar"* - Finalizar pedido\n`;
+    respuesta += `• *"quitar [número]"* - Eliminar producto\n`;
+    respuesta += `• *"cancelar"* - Vaciar carrito\n`;
+    
+    // Mostrar tiempo restante
+    if (timersCarrito[from]) {
+        respuesta += `\n⏰ Tu carrito expira en 15 minutos`;
+    }
+    
+    return respuesta;
+}
+
+// ✅ Confirmar pedido
+function confirmarPedido(from, nombreContacto) {
+    if (!carritos[from] || !carritos[from].productos || carritos[from].productos.length === 0) {
+        return `❌ No tienes productos en el carrito.\n\n` +
+               `Para hacer un pedido, escribe por ejemplo:\n` +
+               `"Quiero 2 cuadernos"`;
+    }
+    
+    const productos = carritos[from].productos;
+    let total = 0;
+    
+    productos.forEach(prod => {
+        total += prod.precio * prod.cantidad;
+    });
+    
+    // Calcular descuento
+    let descuento = 0;
+    let porcentajeDescuento = 0;
+    
+    if (configPedidos.descuentos.habilitado) {
+        for (const regla of configPedidos.descuentos.reglas) {
+            if (total >= regla.minimo) {
+                descuento = Math.floor(total * (regla.porcentaje / 100));
+                porcentajeDescuento = regla.porcentaje;
+            }
+        }
+    }
+    
+    const subtotal = total;
+    const totalFinal = total - descuento;
+    
+    // Opciones de entrega
+    let respuesta = `📋 *RESUMEN DE TU PEDIDO*\n`;
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    productos.forEach((prod, index) => {
+        const numero = index + 1;
+        const subtotalProd = prod.precio * prod.cantidad;
+        respuesta += `${numero}. ${prod.nombreFormateado} x${prod.cantidad}\n`;
+        respuesta += `   $${subtotalProd}\n\n`;
+    });
+    
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `💰 Subtotal: $${subtotal}\n`;
+    
+    if (descuento > 0) {
+        respuesta += `🎁 Descuento (${porcentajeDescuento}%): -$${descuento}\n`;
+    }
+    
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `💰 *TOTAL: $${totalFinal}*\n\n`;
+    
+    // Opciones de entrega
+    if (configPedidos.delivery.habilitado) {
+        respuesta += `🚚 *¿Cómo lo querés recibir?*\n\n`;
+        respuesta += `1️⃣ *Retiro en local* (Gratis)\n`;
+        respuesta += `   📍 ${negocioData.direccion}\n`;
+        respuesta += `   🕐 ${negocioData.horarios}\n\n`;
+        
+        if (configPedidos.delivery.gratis_desde && totalFinal >= configPedidos.delivery.gratis_desde) {
+            respuesta += `2️⃣ *Delivery* (GRATIS por tu compra)\n\n`;
+        } else {
+            respuesta += `2️⃣ *Delivery* (+$${configPedidos.delivery.costo})\n\n`;
+        }
+        
+        respuesta += `Responde *"1"* o *"2"* para continuar`;
+        
+        // Guardar estado esperando entrega
+        carritos[from].esperandoEntrega = true;
+        carritos[from].totalFinal = totalFinal;
+        carritos[from].descuento = descuento;
+        
+        marcarSesionActiva(from, 'confirmando_pedido');
+        
+    } else {
+        // Solo retiro
+        respuesta += `📍 *Retiro en local*\n`;
+        respuesta += `${negocioData.direccion}\n`;
+        respuesta += `🕐 ${negocioData.horarios}\n\n`;
+        
+        respuesta += `💳 *Medios de pago:*\n`;
+        respuesta += `${negocioData.medios_pago}\n\n`;
+        
+        // Guardar pedido y actualizar cliente
+        const numeroPedido = guardarPedidoYActualizarCliente(from, nombreContacto, productos, subtotal, descuento, totalFinal, 'retiro', 0);
+        
+        respuesta += `✅ *PEDIDO CONFIRMADO*\n`;
+        respuesta += `📄 Número de pedido: *#${numeroPedido}*\n\n`;
+        respuesta += `🙏 ¡Gracias por tu compra!`;
+        
+        // Limpiar carrito y sesión
+        delete carritos[from];
+        clearTimeout(timersCarrito[from]);
+        delete timersCarrito[from];
+        limpiarSesion(from);
+    }
+    
+    return respuesta;
+}
+
+// 🚚 Procesar opción de entrega
+function procesarOpcionEntrega(from, opcion, nombreContacto) {
+    if (!carritos[from] || !carritos[from].esperandoEntrega) {
+        return null; // No está esperando opción de entrega
+    }
+    
+    const productos = carritos[from].productos;
+    const totalFinal = carritos[from].totalFinal;
+    const descuento = carritos[from].descuento;
+    const subtotal = totalFinal + descuento;
+    
+    let tipoEntrega = '';
+    let costoDelivery = 0;
+    let respuesta = '';
+    
+    if (opcion === '1') {
+        // Retiro en local
+        tipoEntrega = 'retiro';
+        
+        respuesta += `✅ *PEDIDO CONFIRMADO*\n`;
+        respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        respuesta += `🏪 *Retiro en local*\n`;
+        respuesta += `📍 ${negocioData.direccion}\n`;
+        respuesta += `🕐 ${negocioData.horarios}\n\n`;
+        
+    } else if (opcion === '2') {
+        // Delivery
+        tipoEntrega = 'delivery';
+        
+        // Verificar si delivery es gratis
+        if (configPedidos.delivery.gratis_desde && totalFinal >= configPedidos.delivery.gratis_desde) {
+            costoDelivery = 0;
+        } else {
+            costoDelivery = configPedidos.delivery.costo;
+        }
+        
+        respuesta += `✅ *PEDIDO CONFIRMADO*\n`;
+        respuesta += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        respuesta += `🚚 *Delivery*\n`;
+        
+        if (costoDelivery > 0) {
+            respuesta += `Costo de envío: $${costoDelivery}\n`;
+        } else {
+            respuesta += `🎉 Envío GRATIS por tu compra\n`;
+        }
+        respuesta += `\n`;
+        
+    } else {
+        return `❌ Opción no válida.\n\nResponde *"1"* para retiro o *"2"* para delivery`;
+    }
+    
+    // Resumen de productos
+    productos.forEach((prod, index) => {
+        const numero = index + 1;
+        respuesta += `${numero}. ${prod.nombreFormateado} x${prod.cantidad} - $${prod.precio * prod.cantidad}\n`;
+    });
+    
+    respuesta += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `💰 Subtotal: $${subtotal}\n`;
+    
+    if (descuento > 0) {
+        respuesta += `🎁 Descuento: -$${descuento}\n`;
+    }
+    
+    if (costoDelivery > 0) {
+        respuesta += `🚚 Delivery: +$${costoDelivery}\n`;
+    }
+    
+    const totalConDelivery = totalFinal + costoDelivery;
+    
+    respuesta += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    respuesta += `💰 *TOTAL: $${totalConDelivery}*\n\n`;
+    
+    respuesta += `💳 *Medios de pago:*\n`;
+    respuesta += `${negocioData.medios_pago}\n\n`;
+    
+    // Guardar pedido y actualizar cliente
+    const numeroPedido = guardarPedidoYActualizarCliente(from, nombreContacto, productos, subtotal, descuento, totalConDelivery, tipoEntrega, costoDelivery);
+    
+    respuesta += `📄 Número de pedido: *#${numeroPedido}*\n\n`;
+    respuesta += `🙏 ¡Gracias por tu compra!\n`;
+    respuesta += `Te contactaremos pronto para coordinar.`;
+    
+    // Limpiar carrito
+    delete carritos[from];
+    clearTimeout(timersCarrito[from]);
+    delete timersCarrito[from];
+    
+    return respuesta;
+}
+
+// 💾 Guardar pedido, actualizar cliente y NOTIFICAR AL DUEÑO
+async function guardarPedidoYActualizarCliente(from, nombreContacto, productos, subtotal, descuento, total, tipoEntrega, costoDelivery) {
+    // 1. Guardar en pedidos.json
+    const dataPedidos = JSON.parse(fs.readFileSync('./data/pedidos.json', 'utf8'));
+    
+    dataPedidos.ultimo_numero += 1;
+    const numeroPedido = `PED-${String(dataPedidos.ultimo_numero).padStart(3, '0')}`;
+    
+    const pedido = {
+        id: numeroPedido,
+        cliente: from,
+        nombre: nombreContacto,
+        fecha: new Date().toISOString(),
+        productos: productos.map(p => ({
+            nombre: p.nombreFormateado,
+            cantidad: p.cantidad,
+            precio_unitario: p.precio,
+            subtotal: p.precio * p.cantidad
+        })),
+        subtotal: subtotal,
+        descuento: descuento,
+        delivery: costoDelivery,
+        total: total,
+        tipo_entrega: tipoEntrega,
+        estado: 'confirmado'
+    };
+    
+    dataPedidos.pedidos.push(pedido);
+    fs.writeFileSync('./data/pedidos.json', JSON.stringify(dataPedidos, null, 2));
+    
+    // 2. Actualizar información del cliente
+    const clientesData = JSON.parse(fs.readFileSync('./data/clientes.json', 'utf8'));
+    
+    let cliente = clientesData.clientes.find(c => c.telefono === from);
+    
+    if (!cliente) {
+        cliente = {
+            telefono: from,
+            nombre: nombreContacto,
+            fecha_registro: new Date().toISOString(),
+            ultima_interaccion: new Date().toISOString(),
+            total_pedidos: 0,
+            total_gastado: 0,
+            pedidos: []
+        };
+        clientesData.clientes.push(cliente);
+    }
+    
+    cliente.total_pedidos += 1;
+    cliente.total_gastado += total;
+    cliente.ultima_interaccion = new Date().toISOString();
+    cliente.pedidos.push(pedido);
+    
+    clientesData.estadisticas.total_pedidos += 1;
+    clientesData.estadisticas.total_vendido += total;
+    
+    fs.writeFileSync('./data/clientes.json', JSON.stringify(clientesData, null, 2));
+    
+    console.log(`💾 Pedido guardado: ${numeroPedido} - $${total} - ${nombreContacto}`);
+    console.log(`👤 Cliente actualizado: ${cliente.nombre} - Total: ${cliente.total_pedidos} pedidos - $${cliente.total_gastado}`);
+    
+    // 3. 🔔 NOTIFICAR AL DUEÑO
+    await notificarNuevoPedido(pedido, from, nombreContacto);
+    
+    return numeroPedido;
+}
+
+// 🔔 Enviar notificación al dueño del negocio
+// 🔔 Enviar notificación al dueño del negocio
+async function notificarNuevoPedido(pedido, telefonoCliente, nombreCliente) {
+    try {
+        // Verificar si las notificaciones están activas
+        if (!negocioData.notificaciones_activas) {
+            console.log(`🔕 Notificaciones desactivadas. No se envió notificación.`);
+            return;
+        }
+        
+        // Formatear teléfono del cliente para WhatsApp link
+        const telefonoLimpio = telefonoCliente.replace('@c.us', '');
+        const whatsappLink = `https://wa.me/${telefonoLimpio}`;
+        
+        // Construir mensaje de notificación
+        let mensaje = `🔔 *NUEVO PEDIDO RECIBIDO*\n\n`;
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `📄 *Pedido:* ${pedido.id}\n`;
+        mensaje += `👤 *Cliente:* ${nombreCliente}\n`;
+        mensaje += `📱 *Teléfono:* ${telefonoLimpio}\n`;
+        mensaje += `📅 *Fecha:* ${formatearFecha(pedido.fecha)}\n`;
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        
+        mensaje += `📦 *PRODUCTOS:*\n`;
+        pedido.productos.forEach((prod, index) => {
+            mensaje += `${index + 1}. ${prod.nombre} x${prod.cantidad}\n`;
+            mensaje += `   $${prod.precio_unitario} c/u = $${prod.subtotal}\n`;
+        });
+        
+        mensaje += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `💰 *Subtotal:* $${pedido.subtotal}\n`;
+        
+        if (pedido.descuento > 0) {
+            const porcentaje = Math.round((pedido.descuento / pedido.subtotal) * 100);
+            mensaje += `🎁 *Descuento (${porcentaje}%):* -$${pedido.descuento}\n`;
+        }
+        
+        if (pedido.delivery > 0) {
+            mensaje += `🚚 *Delivery:* +$${pedido.delivery}\n`;
+        }
+        
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `💰 *TOTAL:* $${pedido.total}\n\n`;
+        
+        mensaje += `🚚 *Entrega:* ${pedido.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro en local'}\n`;
+        mensaje += `💳 *Estado de pago:* Pendiente\n`;
+        mensaje += `✅ *Estado:* ${pedido.estado}\n\n`;
+        
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `📲 *Para contactar al cliente:*\n`;
+        mensaje += `${whatsappLink}\n\n`;
+        mensaje += `💡 _Responde desde tu WhatsApp para coordinar._`;
+        
+        let notificacionEnviada = false;
+        
+        // OPCIÓN 1: Enviar al grupo de notificaciones (si existe y es válido)
+        if (negocioData.grupo_notificaciones && 
+            negocioData.grupo_notificaciones.trim() !== '' &&
+            negocioData.grupo_notificaciones.includes('@g.us')) {
+            
+            try {
+                await client.sendMessage(negocioData.grupo_notificaciones, mensaje);
+                console.log(`✅ Notificación enviada al grupo: ${pedido.id}`);
+                notificacionEnviada = true;
+            } catch (errorGrupo) {
+                console.error(`❌ Error al enviar al grupo:`, errorGrupo.message);
+                console.log(`⚠️ Intentando enviar a dueños individuales...`);
+            }
+        }
+        
+        // OPCIÓN 2: Si no hay grupo o falló, enviar a cada dueño individualmente
+        if (!notificacionEnviada) {
+            const dueños = negocioData.numeros_dueños || 
+                          (negocioData.numero_dueño ? [negocioData.numero_dueño] : []);
+            
+            if (dueños.length === 0) {
+                console.log(`⚠️ No hay números de dueños configurados. No se puede enviar notificación.`);
+                return;
+            }
+            
+            for (const numeroDueño of dueños) {
+                if (!numeroDueño || numeroDueño.trim() === '') continue;
+                
+                try {
+                    await client.sendMessage(numeroDueño, mensaje);
+                    console.log(`✅ Notificación enviada a: ${numeroDueño} - Pedido: ${pedido.id}`);
+                    notificacionEnviada = true;
+                } catch (errorIndividual) {
+                    console.error(`❌ Error al notificar a ${numeroDueño}:`, errorIndividual.message);
+                }
+            }
+        }
+        
+        if (!notificacionEnviada) {
+            console.log(`⚠️ No se pudo enviar notificación por ningún medio.`);
+        }
+        
+    } catch (error) {
+        console.error(`❌ Error al enviar notificación:`, error.message);
+    }
+}
+        
+        if (!notificacionEnviada) {
+            console.log(`⚠️ No se pudo enviar notificación por ningún medio.`);
+        }
+        
+    } catch (error) {
+        console.error(`❌ Error al enviar notificación:`, error.message);
+    }
+}        
+        // Verificar que exista el número del dueño
+        if (!negocioData.numero_dueño) {
+            console.log(`⚠️ No hay número de dueño configurado. No se puede enviar notificación.`);
+            return;
+        }
+        
+        // Formatear teléfono del cliente para WhatsApp link
+        const telefonoLimpio = telefonoCliente.replace('@c.us', '');
+        const whatsappLink = `https://wa.me/${telefonoLimpio}`;
+        
+        // Construir mensaje de notificación
+        let mensaje = `🔔 *NUEVO PEDIDO RECIBIDO*\n\n`;
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `📄 *Pedido:* ${pedido.id}\n`;
+        mensaje += `👤 *Cliente:* ${nombreCliente}\n`;
+        mensaje += `📱 *Teléfono:* ${telefonoLimpio}\n`;
+        mensaje += `📅 *Fecha:* ${formatearFecha(pedido.fecha)}\n`;
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        
+        mensaje += `📦 *PRODUCTOS:*\n`;
+        pedido.productos.forEach((prod, index) => {
+            mensaje += `${index + 1}. ${prod.nombre} x${prod.cantidad}\n`;
+            mensaje += `   $${prod.precio_unitario} c/u = $${prod.subtotal}\n`;
+        });
+        
+        mensaje += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `💰 *Subtotal:* $${pedido.subtotal}\n`;
+        
+        if (pedido.descuento > 0) {
+            const porcentaje = Math.round((pedido.descuento / pedido.subtotal) * 100);
+            mensaje += `🎁 *Descuento (${porcentaje}%):* -$${pedido.descuento}\n`;
+        }
+        
+        if (pedido.delivery > 0) {
+            mensaje += `🚚 *Delivery:* +$${pedido.delivery}\n`;
+        }
+        
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `💰 *TOTAL:* $${pedido.total}\n\n`;
+        
+        mensaje += `🚚 *Entrega:* ${pedido.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro en local'}\n`;
+        mensaje += `💳 *Estado de pago:* Pendiente\n`;
+        mensaje += `✅ *Estado:* ${pedido.estado}\n\n`;
+        
+        mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+        mensaje += `📲 *Para contactar al cliente:*\n`;
+        mensaje += `${whatsappLink}\n\n`;
+        mensaje += `💡 _Responde desde tu WhatsApp para coordinar._`;
+        
+        // Enviar mensaje al dueño
+        await client.sendMessage(negocioData.numero_dueño, mensaje);
+        
+        console.log(`✅ Notificación enviada al dueño: ${pedido.id}`);
+        
+    } catch (error) {
+        console.error(`❌ Error al enviar notificación al dueño:`, error);
+    }
+}
+
+// 🗑️ Cancelar/vaciar carrito
+function cancelarCarrito(from) {
+    if (!carritos[from] || !carritos[from].productos || carritos[from].productos.length === 0) {
+        return `🛒 Tu carrito ya está vacío`;
+    }
+    
+    delete carritos[from];
+    clearTimeout(timersCarrito[from]);
+    delete timersCarrito[from];
+    
+    return `✅ Carrito vaciado correctamente\n\n` +
+           `Para hacer un nuevo pedido, escribe por ejemplo:\n` +
+           `"Quiero 2 cuadernos"`;
+}
+
+// 🗑️ Quitar producto del carrito
+function quitarProductoCarrito(from, index) {
+    if (!carritos[from] || !carritos[from].productos || carritos[from].productos.length === 0) {
+        return `🛒 Tu carrito está vacío`;
+    }
+    
+    if (index < 0 || index >= carritos[from].productos.length) {
+        return `❌ Número de producto inválido\n\n` + mostrarCarrito(from);
+    }
+    
+    const productoEliminado = carritos[from].productos.splice(index, 1)[0];
+    
+    let respuesta = `✅ Eliminado: ${productoEliminado.nombreFormateado} x${productoEliminado.cantidad}\n\n`;
+    
+    if (carritos[from].productos.length === 0) {
+        delete carritos[from];
+        clearTimeout(timersCarrito[from]);
+        delete timersCarrito[from];
+        respuesta += `🛒 Tu carrito está vacío`;
+    } else {
+        respuesta += mostrarCarrito(from);
+    }
+    
+    return respuesta;
+}
+
+// ⏰ Iniciar timer de expiración del carrito
+function iniciarTimerCarrito(from) {
+    if (timersCarrito[from]) {
+        clearTimeout(timersCarrito[from]);
+    }
+    
+    timersCarrito[from] = setTimeout(() => {
+        if (carritos[from]) {
+            delete carritos[from];
+            delete timersCarrito[from];
+            console.log(`⏰ Carrito expirado para: ${from}`);
+        }
+    }, configPedidos.carrito.expiracion_minutos * 60 * 1000);
+}
+
+// 🔢 Extraer número de un texto
+function extraerNumero(texto) {
+    const match = texto.match(/\d+/);
+    return match ? parseInt(match[0]) : null;
+}
+
+// 💰 Buscar precios por categoría
+function buscarPreciosCategoria(categoria) {
+    const datos = listaPrecios[categoria];
+    let respuesta = `💰 *Precios - ${categoria.toUpperCase().replace(/_/g, ' ')}*\n\n`;
+    
+    let contador = 0;
+    for (const [subcategoria, productos] of Object.entries(datos)) {
+        for (const [nombre, info] of Object.entries(productos)) {
+            const stockEmoji = info.stock ? '✅' : '❌';
+            const precioTexto = info.precio_desde 
+                ? `desde $${info.precio_desde}` 
+                : `$${info.precio}${info.unidad ? ' ' + info.unidad : ''}`;
+            
+            const nombreFormateado = nombre.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            respuesta += `${stockEmoji} ${nombreFormateado}: ${precioTexto}\n`;
+            contador++;
+        }
+    }
+    
+    if (contador === 0) {
+        respuesta += `No encontré productos en esta categoría.\n`;
+    }
+    
+    respuesta += `\n💡 Para hacer un pedido, escribe por ejemplo:\n`;
+    respuesta += `"Quiero 2 cuadernos" o "Necesito 5 lapiceras"`;
+    
+    return respuesta;
+}
+
+client.initialize();
