@@ -1,0 +1,218 @@
+{
+  "varios": {
+    "aseo_personal": {
+      "talco": {
+        "stock": true,
+        "precio": 2300,
+        "codigo_barras": "7791293044477",
+        "imagenes": [
+          {
+            "url": "https://res.cloudinary.com/dhgcwck7a/image/upload/v1763700570/gestionbot/productos/varios/aseo%20personal/varios::aseo_personal::talco_1763700567752.jpg",
+            "public_id": "gestionbot/productos/varios/aseo personal/varios::aseo_personal::talco_1763700567752",
+            "width": 1000,
+            "height": 1000,
+            "format": "jpg",
+            "size": 88236
+          }
+        ]
+      }
+    }
+  },
+  "higiene": {
+    "alcohol": {
+      "alcohol_etilico": {
+        "stock": true,
+        "precio": 2300,
+        "imagenes": []
+      },
+      "alcohol": {
+        "stock": true,
+        "precio": 2000,
+        "codigo_barras": "7796551000042",
+        "imagenes": [
+          {
+            "url": "https://res.cloudinary.com/dhgcwck7a/image/upload/v1763517065/gestionbot/productos/higiene/alcohol/higiene::alcohol::alcohol_1763517064533.jpg",
+            "public_id": "gestionbot/productos/higiene/alcohol/higiene::alcohol::alcohol_1763517064533"
+          },
+          {
+            "url": "https://res.cloudinary.com/dhgcwck7a/image/upload/v1763559662/gestionbot/productos/higiene/alcohol/higiene::alcohol::alcohol_1763559661474.jpg",
+            "public_id": "gestionbot/productos/higiene/alcohol/higiene::alcohol::alcohol_1763559661474",
+            "width": 1000,
+            "height": 1000,
+            "format": "jpg",
+            "subida": "2025-11-19T13:41:04.023Z"
+          }
+        ],
+        "unidad": "c/u",
+        "id": "higiene::alcohol::alcohol",
+        "nombre": "alcohol",
+        "categoria": "higiene",
+        "subcategoria": "alcohol"
+      }
+    }
+  },
+  "accesorio_para_celular": {
+    "cargador": {
+      "cargador_de_iphone": {
+        "stock": true,
+        "precio": 45000,
+        "imagenes": [],
+        "id": "accesorio_para_celular::cargador::cargador_de_iphone",
+        "nombre": "cargador_de_iphone",
+        "categoria": "accesorio_para_celular",
+        "subcategoria": "cargador"
+      }
+    }
+  },
+  "parlantes": {
+    "bluetooth": {
+      "parlante_bluetooth": {
+        "stock": true,
+        "precio": 350000
+      }
+    },
+    "parlante": {
+      "parlante": {
+        "stock": true,
+        "precio": 3000
+      }
+    }
+  },
+  "juguetes": {
+    "peluches": {
+      "peluche_mediano": {
+        "precio": 35000,
+        "stock": true,
+        "id": "juguetes::peluches::peluche_mediano",
+        "categoria": "juguetes"
+      },
+      "peluche_pequeno": {
+        "precio": 20002,
+        "stock": true,
+        "id": "juguetes::peluches::peluche_pequeno",
+        "categoria": "juguetes"
+      }
+    },
+    "juegos_de_mesa": {
+      "uno": {
+        "precio": 2500,
+        "stock": true,
+        "id": "juguetes::juegos_de_mesa::uno",
+        "categoria": "juguetes"
+      }
+    },
+    "auto": {
+      "auto_a_control_remoto": {
+        "stock": true,
+        "precio": 23000,
+        "unidad": "c/u",
+        "imagenes": [],
+        "id": "juguetes::auto::auto_a_control_remoto",
+        "categoria": "juguetes"
+      }
+    }
+  },
+  "impresiones": {
+    "copias": {
+      "impresion_blanco_negro": {
+        "precio_desde": 50,
+        "unidad": "por hoja",
+        "stock": true,
+        "imagenes": [],
+        "id": "impresiones::copias::impresion_blanco_negro",
+        "categoria": "impresiones"
+      },
+      "impresion_color": {
+        "precio_desde": 100,
+        "unidad": "por hoja",
+        "stock": true,
+        "id": "impresiones::copias::impresion_color",
+        "categoria": "impresiones"
+      }
+    },
+    "anillados": {
+      "anillado_simple": {
+        "precio": 300,
+        "stock": true,
+        "imagenes": [],
+        "id": "impresiones::anillados::anillado_simple",
+        "categoria": "impresiones"
+      },
+      "anillado_doble": {
+        "precio": 500000,
+        "stock": true,
+        "id": "impresiones::anillados::anillado_doble",
+        "categoria": "impresiones",
+        "imagenes": []
+      }
+    },
+    "digital": {
+      "curriculum": {
+        "stock": true,
+        "precio": 3000,
+        "imagenes": [],
+        "id": "impresiones::digital::curriculum",
+        "categoria": "impresiones",
+        "nombre": "curriculum",
+        "subcategoria": "digital"
+      }
+    }
+  },
+  "podio": {
+    "fiesta": {
+      "auto": {
+        "stock": true,
+        "precio": 30000,
+        "imagenes": [],
+        "codigo_barras": "6464665686434386857735737357357",
+        "id": "podio::fiesta::auto",
+        "nombre": "auto",
+        "categoria": "podio",
+        "subcategoria": "fiesta"
+      }
+    }
+  },
+  "libreria": {
+    "cuadernos": {},
+    "cartucheras": {
+      "cartuchera_simple": {
+        "precio": 2500,
+        "stock": true,
+        "id": "libreria::cartucheras::cartuchera_simple",
+        "categoria": "libreria"
+      },
+      "cartuchera_doble": {
+        "precio": 1200,
+        "stock": true,
+        "imagenes": [
+          {
+            "url": "https://res.cloudinary.com/dhgcwck7a/image/upload/v1763820063/gestionbot/productos/libreria/cartucheras/libreria::cartucheras::cartuchera_doble_1763820062760.jpg",
+            "public_id": "gestionbot/productos/libreria/cartucheras/libreria::cartucheras::cartuchera_doble_1763820062760",
+            "width": 1000,
+            "height": 1000,
+            "format": "jpg",
+            "size": 89481
+          }
+        ],
+        "id": "libreria::cartucheras::cartuchera_doble",
+        "nombre": "cartuchera_doble",
+        "categoria": "libreria",
+        "subcategoria": "cartucheras"
+      }
+    },
+    "escolar": {
+      "cuadernillo_universitario": {
+        "stock": true,
+        "precio": 2500,
+        "id": "libreria::escolar::cuadernillo_universitario",
+        "categoria": "libreria"
+      },
+      "lapicera_bic": {
+        "stock": true,
+        "precio": 200,
+        "id": "libreria::escolar::lapicera_bic",
+        "categoria": "libreria"
+      }
+    }
+  }
+}

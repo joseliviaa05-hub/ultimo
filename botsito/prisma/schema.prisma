@@ -1,0 +1,224 @@
+// ═══════════════════════════════════════════════════════════════
+// PRISMA SCHEMA - Botsitot (Optimizado con índices)
+// ═══════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODELOS
+// ═══════════════════════════════════════════════════════════════
+
+// Cliente
+model Cliente {
+  id                  String   @id @default(uuid())
+  telefono            String   @unique
+  nombre              String
+  fechaRegistro       DateTime @default(now())
+  ultimaInteraccion   DateTime @updatedAt
+  totalPedidos        Int      @default(0)
+  totalGastado        Decimal  @default(0) @db.Decimal(10, 2)
+  
+  // Relaciones
+  pedidos             Pedido[]
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([telefono])
+  @@index([nombre])
+  @@index([ultimaInteraccion])
+  @@index([fechaRegistro])
+  @@index([totalPedidos])
+  @@map("clientes")
+}
+
+// Pedido
+model Pedido {
+  id                    String        @id @default(uuid())
+  numero                String        @unique
+  clienteId             String
+  nombreCliente         String
+  fecha                 DateTime      @default(now())
+  subtotal              Decimal       @db.Decimal(10, 2)
+  descuento             Decimal       @default(0) @db.Decimal(10, 2)
+  descuentoPorcentaje   Int? 
+  delivery              Decimal       @default(0) @db.Decimal(10, 2)
+  total                 Decimal       @db.Decimal(10, 2)
+  tipoEntrega           TipoEntrega
+  estado                EstadoPedido  @default(PENDIENTE)
+  estadoPago            EstadoPago    @default(PENDIENTE)
+  
+  // Relaciones
+  cliente               Cliente       @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  items                 ItemPedido[]
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([clienteId])
+  @@index([numero])
+  @@index([estado])
+  @@index([estadoPago])
+  @@index([fecha], map: "pedidos_fecha_asc_idx")
+  @@index([tipoEntrega])
+  @@index([clienteId, estado])
+  @@index([clienteId, fecha])
+  @@index([estado, fecha])
+  @@index([fecha(sort: Desc)], map: "pedidos_fecha_desc_idx")
+  @@map("pedidos")
+}
+
+// Item de Pedido
+model ItemPedido {
+  id                String  @id @default(uuid())
+  pedidoId          String
+  productoId        String
+  nombre            String
+  cantidad          Int
+  precioUnitario    Decimal @db.Decimal(10, 2)
+  subtotal          Decimal @db.Decimal(10, 2)
+  
+  // Relaciones
+  pedido            Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto          Producto @relation(fields: [productoId], references: [id])
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([pedidoId])
+  @@index([productoId])
+  @@index([productoId, pedidoId])
+  @@map("items_pedido")
+}
+
+// Producto
+model Producto {
+  id              String    @id @default(uuid())
+  nombre          String
+  categoria       Categoria
+  subcategoria    String
+  precio          Decimal   @db.Decimal(10, 2)
+  precioDesde     Decimal?  @db.Decimal(10, 2)
+  unidad          String? 
+  stock           Boolean   @default(true)
+  codigoBarras    String?   @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relaciones
+  imagenes        ImagenProducto[]
+  items           ItemPedido[]
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([categoria])
+  @@index([subcategoria])
+  @@index([stock])
+  @@index([nombre])
+  @@index([codigoBarras])
+  @@index([categoria, stock])
+  @@index([categoria, subcategoria])
+  @@index([stock, categoria])
+  @@index([precio])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("productos")
+}
+
+// Imagen de Producto
+model ImagenProducto {
+  id          String   @id @default(uuid())
+  productoId  String
+  url         String
+  publicId    String
+  width       Int
+  height      Int
+  format      String
+  size        Int
+  orden       Int      @default(0)
+  createdAt   DateTime @default(now())
+  
+  // Relaciones
+  producto    Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([productoId])
+  @@index([productoId, orden])
+  @@index([publicId])
+  @@map("imagenes_producto")
+}
+
+// Usuario (para autenticación)
+model Usuario {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  nombre    String
+  rol       Rol      @default(VIEWER)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // ═══════════════════════════════════════════════════════════
+  // ÍNDICES PARA PERFORMANCE
+  // ═══════════════════════════════════════════════════════════
+  @@index([email])
+  @@index([rol])
+  @@index([activo])
+  @@index([rol, activo])
+  @@map("usuarios")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════
+
+enum Categoria {
+  LIBRERIA
+  COTILLON
+  JUGUETERIA
+  FOTOCOPIADORA
+  IMPRESIONES
+  BIJOU
+  ACCESORIO_CELULAR
+  ACCESORIOS_COMPUTADORA
+  HIGIENE
+  VARIOS
+}
+
+enum TipoEntrega {
+  DELIVERY
+  RETIRO
+}
+
+enum EstadoPedido {
+  PENDIENTE
+  CONFIRMADO
+  EN_PREPARACION
+  LISTO
+  ENTREGADO
+  CANCELADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PAGADO
+  PARCIAL
+}
+
+enum Rol {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
